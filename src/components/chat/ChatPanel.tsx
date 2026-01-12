@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { useChat } from '@/hooks/useChat';
@@ -14,17 +14,25 @@ import logo from '@/assets/logo.png';
 
 interface ChatPanelProps {
   conversationId?: string;
+  onFilesChange?: (files: CodeFile[]) => void;
+  activeFile?: string;
+  onFileSelect?: (fileName: string) => void;
 }
 
-export function ChatPanel({ conversationId }: ChatPanelProps) {
+export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSelect }: ChatPanelProps) {
   const { messages, isLoading, sendMessage, stopGeneration } = useChat(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview'>('code');
+  const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview'>('preview');
   const [previewFiles, setPreviewFiles] = useState<CodeFile[]>([]);
 
   // Extract code files from messages
   const codeFiles = useMemo(() => extractCodeBlocks(messages), [messages]);
+
+  // Notify parent of file changes
+  useEffect(() => {
+    onFilesChange?.(codeFiles);
+  }, [codeFiles, onFilesChange]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -32,10 +40,17 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
     }
   }, [messages]);
 
-  const handleRunCode = (files: CodeFile[]) => {
+  // Auto-run preview when code changes
+  useEffect(() => {
+    if (codeFiles.length > 0) {
+      setPreviewFiles(codeFiles);
+    }
+  }, [codeFiles]);
+
+  const handleRunCode = useCallback((files: CodeFile[]) => {
     setPreviewFiles(files);
     setRightPanelTab('preview');
-  };
+  }, []);
 
   const chatContent = (
     <div className="flex flex-col h-full bg-background">
@@ -77,30 +92,35 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
   );
 
   const rightPanel = (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between border-b border-zinc-700 bg-zinc-900 px-2 py-1">
+    <div className="h-full flex flex-col bg-card">
+      <div className="flex items-center justify-between border-b px-2 py-1 bg-muted/50">
         <Tabs value={rightPanelTab} onValueChange={(v) => setRightPanelTab(v as 'code' | 'preview')}>
           <TabsList className="h-8 bg-transparent">
             <TabsTrigger 
-              value="code" 
-              className="h-7 text-xs gap-1.5 text-zinc-400 data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-100"
-            >
-              <Code className="w-3.5 h-3.5" />
-              Code
-            </TabsTrigger>
-            <TabsTrigger 
               value="preview" 
-              className="h-7 text-xs gap-1.5 text-zinc-400 data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-100"
+              className="h-7 text-xs gap-1.5 data-[state=active]:bg-background"
             >
               <Eye className="w-3.5 h-3.5" />
               Preview
+            </TabsTrigger>
+            <TabsTrigger 
+              value="code" 
+              className="h-7 text-xs gap-1.5 data-[state=active]:bg-background"
+            >
+              <Code className="w-3.5 h-3.5" />
+              Code
             </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
       <div className="flex-1 overflow-hidden">
         {rightPanelTab === 'code' ? (
-          <CodePreview files={codeFiles} onRunCode={handleRunCode} />
+          <CodePreview 
+            files={codeFiles} 
+            onRunCode={handleRunCode}
+            activeFile={activeFile}
+            onFileSelect={onFileSelect}
+          />
         ) : (
           <LivePreview files={previewFiles.length > 0 ? previewFiles : codeFiles} />
         )}

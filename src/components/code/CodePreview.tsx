@@ -14,17 +14,26 @@ export interface CodeFile {
 interface CodePreviewProps {
   files: CodeFile[];
   onRunCode?: (files: CodeFile[]) => void;
+  activeFile?: string;
+  onFileSelect?: (fileName: string) => void;
 }
 
-export function CodePreview({ files, onRunCode }: CodePreviewProps) {
-  const [activeFile, setActiveFile] = useState(files[0]?.name || '');
+export function CodePreview({ files, onRunCode, activeFile: externalActiveFile, onFileSelect }: CodePreviewProps) {
+  const [internalActiveFile, setInternalActiveFile] = useState(files[0]?.name || '');
   const [editedFiles, setEditedFiles] = useState<Map<string, string>>(new Map());
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
+  const activeFile = externalActiveFile || internalActiveFile;
+
+  const handleFileChange = (fileName: string) => {
+    setInternalActiveFile(fileName);
+    onFileSelect?.(fileName);
+  };
+
   useEffect(() => {
     if (files.length > 0 && !files.find(f => f.name === activeFile)) {
-      setActiveFile(files[0].name);
+      handleFileChange(files[0].name);
     }
   }, [files, activeFile]);
 
@@ -105,7 +114,7 @@ export function CodePreview({ files, onRunCode }: CodePreviewProps) {
   return (
     <div className="h-full flex flex-col bg-zinc-900">
       <div className="flex items-center justify-between border-b border-zinc-700 px-2 py-1">
-        <Tabs value={activeFile} onValueChange={setActiveFile} className="flex-1">
+        <Tabs value={activeFile} onValueChange={handleFileChange} className="flex-1">
           <TabsList className="h-8 bg-transparent">
             {files.map((file) => (
               <TabsTrigger
