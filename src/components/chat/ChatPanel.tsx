@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { useChat, Message } from '@/hooks/useChat';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, PanelRightClose, PanelRight } from 'lucide-react';
+import { CodePreview, CodeFile } from '@/components/code/CodePreview';
+import { extractCodeBlocks } from '@/lib/codeExtractor';
+import { Button } from '@/components/ui/button';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 interface ChatPanelProps {
   conversationId?: string;
@@ -12,6 +16,10 @@ interface ChatPanelProps {
 export function ChatPanel({ conversationId }: ChatPanelProps) {
   const { messages, isLoading, sendMessage, stopGeneration } = useChat(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showCodePanel, setShowCodePanel] = useState(true);
+
+  // Extract code files from messages
+  const codeFiles = useMemo(() => extractCodeBlocks(messages), [messages]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -19,7 +27,7 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
     }
   }, [messages]);
 
-  return (
+  const chatContent = (
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         {messages.length === 0 ? (
@@ -45,7 +53,7 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
             </div>
           </div>
         ) : (
-          <div className="space-y-4 max-w-4xl mx-auto">
+          <div className="space-y-4 max-w-3xl mx-auto">
             {messages.map((message) => (
               <ChatMessage key={message.id} role={message.role} content={message.content} />
             ))}
@@ -57,6 +65,48 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
         onStop={stopGeneration}
         isLoading={isLoading}
       />
+    </div>
+  );
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Toggle button for code panel */}
+      <div className="flex items-center justify-end p-2 border-b bg-muted/30">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowCodePanel(!showCodePanel)}
+          className="gap-2"
+        >
+          {showCodePanel ? (
+            <>
+              <PanelRightClose className="w-4 h-4" />
+              Hide Code
+            </>
+          ) : (
+            <>
+              <PanelRight className="w-4 h-4" />
+              Show Code
+            </>
+          )}
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {showCodePanel ? (
+          <ResizablePanelGroup direction="horizontal">
+            <ResizablePanel defaultSize={50} minSize={30}>
+              {chatContent}
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={50} minSize={25}>
+              <CodePreview files={codeFiles} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          chatContent
+        )}
+      </div>
     </div>
   );
 }
