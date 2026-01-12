@@ -5,59 +5,65 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const VALID_MODELS = [
+  "google/gemini-3-flash-preview",
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-pro",
+  "google/gemini-3-pro-preview",
+  "openai/gpt-5-mini",
+  "openai/gpt-5",
+];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { messages } = await req.json();
+    const { messages, model = "google/gemini-3-flash-preview" } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const systemPrompt = `You are an expert AI app builder assistant called Eternity Code. You help users create web applications by:
-- Understanding their requirements and suggesting the best approach
-- Generating clean, modular React/TypeScript code
-- Following best practices for component architecture
-- Using Tailwind CSS for styling
-- Providing helpful explanations for your code decisions
+    // Validate model
+    const selectedModel = VALID_MODELS.includes(model) ? model : "google/gemini-3-flash-preview";
 
-IMPORTANT CODE FORMATTING RULES:
-1. Always wrap code in triple backticks with the language identifier
-2. Include the filename as a comment at the top of each code block
-3. Example format:
+    const systemPrompt = `You are Eternity Code, an expert AI coding assistant. You help developers build web applications using React, TypeScript, and Tailwind CSS.
+
+Your capabilities:
+- Generate clean, production-ready React/TypeScript code
+- Create modular, reusable components
+- Follow modern best practices and design patterns
+- Provide clear explanations for code decisions
+
+CODE FORMATTING RULES:
+1. Always wrap code in triple backticks with language identifier
+2. Include the filename as a comment at the top:
 \`\`\`tsx
-// App.tsx
-function App() {
-  return <div>Hello World</div>;
+// ComponentName.tsx
+function ComponentName() {
+  return <div>Content</div>;
 }
-export default App;
+export default ComponentName;
 \`\`\`
 
-4. For CSS files:
+3. For CSS files:
 \`\`\`css
 // styles.css
 .container { padding: 20px; }
 \`\`\`
 
-5. Generate complete, runnable React components
-6. Use functional components with hooks
-7. Include all necessary imports conceptually (they'll be handled by the runtime)
-8. Use Tailwind CSS classes for styling
-9. Make components self-contained and ready to render
+CODE QUALITY:
+- Use functional components with hooks
+- Include TypeScript types
+- Use Tailwind CSS for styling
+- Create self-contained, runnable components
+- Add helpful comments
+- Handle edge cases and errors
 
-When generating code:
-- Create small, focused components
-- Use TypeScript for type safety
-- Follow React best practices
-- Include helpful comments
-- Suggest improvements and alternatives
-- ALWAYS provide complete, working code that can be previewed immediately
-
-Be concise but thorough. Ask clarifying questions when needed.`;
+Be concise but thorough. Generate complete, working code that can be previewed immediately.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -66,7 +72,7 @@ Be concise but thorough. Ask clarifying questions when needed.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: selectedModel,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,

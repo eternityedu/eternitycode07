@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
+import { DEFAULT_MODEL } from '@/lib/models';
 
 export interface Message {
   id: string;
@@ -11,6 +12,7 @@ export interface Message {
 export function useChat(conversationId?: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
 
@@ -52,6 +54,7 @@ export function useChat(conversationId?: string) {
               role: m.role,
               content: m.content,
             })),
+            model: selectedModel,
           }),
           signal: abortControllerRef.current.signal,
         }
@@ -129,7 +132,7 @@ export function useChat(conversationId?: string) {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [messages, isLoading, conversationId, toast]);
+  }, [messages, isLoading, conversationId, selectedModel, toast]);
 
   const stopGeneration = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -143,6 +146,8 @@ export function useChat(conversationId?: string) {
   return {
     messages,
     isLoading,
+    selectedModel,
+    setSelectedModel,
     sendMessage,
     stopGeneration,
     clearMessages,
