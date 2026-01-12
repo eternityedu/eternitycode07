@@ -159,12 +159,9 @@ export function LivePreview({ files }: LivePreviewProps) {
       const htmlContent = generatePreviewHtml(files);
       
       if (iframeRef.current && htmlContent) {
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        iframeRef.current.src = url;
+        // Use srcdoc for better compatibility
+        iframeRef.current.srcdoc = htmlContent;
         setError(null);
-        
-        return () => URL.revokeObjectURL(url);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -177,9 +174,11 @@ export function LivePreview({ files }: LivePreviewProps) {
 
   const handleOpenExternal = () => {
     const htmlContent = generatePreviewHtml(files);
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write(htmlContent);
+      newWindow.document.close();
+    }
   };
 
   if (files.length === 0) {
@@ -266,23 +265,26 @@ export function LivePreview({ files }: LivePreviewProps) {
       </div>
 
       {/* Preview Container */}
-      <div className="flex-1 overflow-hidden bg-zinc-100 dark:bg-zinc-900 flex items-start justify-center p-4">
+      <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 flex items-start justify-center p-4">
         <div 
           className={cn(
-            "bg-white shadow-lg rounded-lg overflow-hidden transition-all duration-300 h-full",
+            "bg-white shadow-lg rounded-lg overflow-hidden transition-all duration-300",
             deviceSize !== 'desktop' && "border"
           )}
           style={{ 
             width: deviceSizes[deviceSize].width,
             maxWidth: '100%',
+            height: deviceSize === 'desktop' ? '100%' : 'calc(100% - 2rem)',
+            minHeight: '400px',
           }}
         >
           <iframe
             key={key}
             ref={iframeRef}
-            className="w-full h-full border-0"
+            className="w-full h-full border-0 bg-white"
             title="Live Preview"
-            sandbox="allow-scripts allow-forms allow-modals allow-popups"
+            sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
+            style={{ minHeight: '400px' }}
           />
         </div>
       </div>
