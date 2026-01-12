@@ -3,6 +3,7 @@ import { useParams, Navigate, Link, useNavigate } from 'react-router-dom';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ConversationHistory } from '@/components/chat/ConversationHistory';
 import { FileExplorer } from '@/components/files/FileExplorer';
+import { ExportDialog } from '@/components/export/ExportDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Settings,
+  Download,
 } from 'lucide-react';
 import { 
   Sidebar,
@@ -38,6 +40,7 @@ export default function Chat() {
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>();
   const [codeFiles, setCodeFiles] = useState<CodeFile[]>([]);
   const [activeFile, setActiveFile] = useState<string>('');
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   // Fetch project details
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -176,6 +179,17 @@ export default function Chat() {
             <h1 className="font-semibold text-sm truncate">{project.name}</h1>
           </div>
 
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-8 gap-1.5"
+            onClick={() => setShowExportDialog(true)}
+            disabled={codeFiles.length === 0}
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
+
           <Button variant="ghost" size="icon" asChild className="h-8 w-8">
             <Link to="/settings">
               <Settings className="w-4 h-4" />
@@ -183,6 +197,14 @@ export default function Chat() {
           </Button>
         </div>
       </header>
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        files={codeFiles}
+        projectName={project.name}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
