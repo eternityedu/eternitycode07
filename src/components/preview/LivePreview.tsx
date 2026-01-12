@@ -293,25 +293,58 @@ export function LivePreview({ files }: LivePreviewProps) {
 }
 
 function cleanReactCode(code: string): string {
-  return code
-    // Remove import statements
-    .replace(/^import\s+.*?from\s+['"'].*?['"'];?\s*$/gm, '')
-    .replace(/^import\s+['"'].*?['"'];?\s*$/gm, '')
+  // Remove import statements
+  let cleaned = code
+    .replace(/^import\s+.*?from\s+['"].*?['"];?\s*$/gm, '')
+    .replace(/^import\s+['"].*?['"];?\s*$/gm, '')
     // Remove export statements but keep the content
     .replace(/^export\s+default\s+/gm, '')
     .replace(/^export\s+/gm, '')
-    // Try to identify and rename the main component to App if needed
-    .replace(/^(function|const)\s+(\w+)\s*=/m, (match, keyword, name) => {
-      if (name !== 'App' && !code.includes('function App') && !code.includes('const App')) {
-        return `${keyword} App =`;
-      }
-      return match;
-    })
-    .replace(/^function\s+(\w+)\s*\(/m, (match, name) => {
-      if (name !== 'App' && !code.includes('function App') && !code.includes('const App')) {
-        return 'function App(';
-      }
-      return match;
-    })
     .trim();
+  
+  // Check if App component already exists
+  const hasApp = /\bfunction\s+App\s*\(/.test(cleaned) || /\bconst\s+App\s*=/.test(cleaned);
+  
+  if (!hasApp) {
+    // Find the first component function and rename it to App
+    // Match: function ComponentName( or const ComponentName = 
+    const funcMatch = cleaned.match(/^(function)\s+([A-Z][a-zA-Z0-9]*)\s*\(/m);
+    const constMatch = cleaned.match(/^(const)\s+([A-Z][a-zA-Z0-9]*)\s*=\s*((\([^)]*\)|[^=])\s*=>|\(?function)/m);
+    
+    if (funcMatch) {
+      const originalName = funcMatch[2];
+      // Replace the function declaration
+      cleaned = cleaned.replace(
+        new RegExp(`^function\\s+${originalName}\\s*\\(`, 'm'),
+        'function App('
+      );
+      // Also replace any self-references in the component
+      cleaned = cleaned.replace(
+        new RegExp(`<${originalName}(\\s|>|\\/)`, 'g'),
+        '<App$1'
+      );
+      cleaned = cleaned.replace(
+        new RegExp(`</${originalName}>`, 'g'),
+        '</App>'
+      );
+    } else if (constMatch) {
+      const originalName = constMatch[2];
+      // Replace the const declaration
+      cleaned = cleaned.replace(
+        new RegExp(`^const\\s+${originalName}\\s*=`, 'm'),
+        'const App ='
+      );
+      // Also replace any self-references in the component
+      cleaned = cleaned.replace(
+        new RegExp(`<${originalName}(\\s|>|\\/)`, 'g'),
+        '<App$1'
+      );
+      cleaned = cleaned.replace(
+        new RegExp(`</${originalName}>`, 'g'),
+        '</App>'
+      );
+    }
+  }
+  
+  return cleaned;
 }
