@@ -1,13 +1,16 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
-import { useChat, Message } from '@/hooks/useChat';
+import { useChat } from '@/hooks/useChat';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sparkles, PanelRightClose, PanelRight } from 'lucide-react';
 import { CodePreview, CodeFile } from '@/components/code/CodePreview';
+import { LivePreview } from '@/components/preview/LivePreview';
 import { extractCodeBlocks } from '@/lib/codeExtractor';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { PanelRightClose, PanelRight, Code, Eye } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 interface ChatPanelProps {
   conversationId?: string;
@@ -16,7 +19,9 @@ interface ChatPanelProps {
 export function ChatPanel({ conversationId }: ChatPanelProps) {
   const { messages, isLoading, sendMessage, stopGeneration } = useChat(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [showCodePanel, setShowCodePanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview'>('code');
+  const [previewFiles, setPreviewFiles] = useState<CodeFile[]>([]);
 
   // Extract code files from messages
   const codeFiles = useMemo(() => extractCodeBlocks(messages), [messages]);
@@ -27,25 +32,27 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
     }
   }, [messages]);
 
+  const handleRunCode = (files: CodeFile[]) => {
+    setPreviewFiles(files);
+    setRightPanelTab('preview');
+  };
+
   const chatContent = (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-background">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Sparkles className="w-8 h-8 text-primary" />
-            </div>
-            <h2 className="text-xl font-semibold mb-2">What would you like to build?</h2>
-            <p className="text-muted-foreground max-w-md">
-              Describe your app idea and I'll help you create it. I can generate code, 
-              suggest architectures, and guide you through the development process.
+            <img src={logo} alt="Eternity Code" className="w-20 h-20 rounded-2xl mb-6" />
+            <h2 className="text-2xl font-bold mb-2">What would you like to build?</h2>
+            <p className="text-muted-foreground max-w-md mb-8">
+              Describe your app idea and I'll help you create it with live code editing and instant preview.
             </p>
-            <div className="mt-6 flex flex-wrap gap-2 justify-center">
-              {['Dashboard', 'Landing page', 'Todo app', 'Chat interface'].map((suggestion) => (
+            <div className="flex flex-wrap gap-2 justify-center">
+              {['Dashboard', 'Landing page', 'Todo app', 'Calculator', 'Form'].map((suggestion) => (
                 <button
                   key={suggestion}
-                  onClick={() => sendMessage(`Help me build a ${suggestion.toLowerCase()}`)}
-                  className="px-3 py-1.5 text-sm rounded-full border hover:bg-muted transition-colors"
+                  onClick={() => sendMessage(`Create a ${suggestion.toLowerCase()} component in React with Tailwind CSS`)}
+                  className="px-4 py-2 text-sm rounded-lg border bg-muted/50 hover:bg-muted transition-colors"
                 >
                   {suggestion}
                 </button>
@@ -64,43 +71,76 @@ export function ChatPanel({ conversationId }: ChatPanelProps) {
         onSend={sendMessage}
         onStop={stopGeneration}
         isLoading={isLoading}
+        placeholder="Describe what you want to build..."
       />
+    </div>
+  );
+
+  const rightPanel = (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between border-b border-zinc-700 bg-zinc-900 px-2 py-1">
+        <Tabs value={rightPanelTab} onValueChange={(v) => setRightPanelTab(v as 'code' | 'preview')}>
+          <TabsList className="h-8 bg-transparent">
+            <TabsTrigger 
+              value="code" 
+              className="h-7 text-xs gap-1.5 text-zinc-400 data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-100"
+            >
+              <Code className="w-3.5 h-3.5" />
+              Code
+            </TabsTrigger>
+            <TabsTrigger 
+              value="preview" 
+              className="h-7 text-xs gap-1.5 text-zinc-400 data-[state=active]:bg-zinc-800 data-[state=active]:text-zinc-100"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Preview
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {rightPanelTab === 'code' ? (
+          <CodePreview files={codeFiles} onRunCode={handleRunCode} />
+        ) : (
+          <LivePreview files={previewFiles.length > 0 ? previewFiles : codeFiles} />
+        )}
+      </div>
     </div>
   );
 
   return (
     <div className="h-full flex flex-col">
-      {/* Toggle button for code panel */}
+      {/* Toggle button for right panel */}
       <div className="flex items-center justify-end p-2 border-b bg-muted/30">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setShowCodePanel(!showCodePanel)}
+          onClick={() => setShowRightPanel(!showRightPanel)}
           className="gap-2"
         >
-          {showCodePanel ? (
+          {showRightPanel ? (
             <>
               <PanelRightClose className="w-4 h-4" />
-              Hide Code
+              Hide Panel
             </>
           ) : (
             <>
               <PanelRight className="w-4 h-4" />
-              Show Code
+              Show Panel
             </>
           )}
         </Button>
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {showCodePanel ? (
+        {showRightPanel ? (
           <ResizablePanelGroup direction="horizontal">
-            <ResizablePanel defaultSize={50} minSize={30}>
+            <ResizablePanel defaultSize={45} minSize={30}>
               {chatContent}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={50} minSize={25}>
-              <CodePreview files={codeFiles} />
+            <ResizablePanel defaultSize={55} minSize={30}>
+              {rightPanel}
             </ResizablePanel>
           </ResizablePanelGroup>
         ) : (

@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Sparkles, LogOut, Settings, User } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 export function Header() {
   const { user, signOut } = useAuth();
@@ -12,10 +13,8 @@ export function Header() {
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center justify-between">
         <Link to="/" className="flex items-center gap-2 font-semibold">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="text-lg">AppBuilder</span>
+          <img src={logo} alt="Eternity Code" className="w-8 h-8 rounded-lg" />
+          <span className="text-lg">Eternity Code</span>
         </Link>
 
         <nav className="flex items-center gap-4">

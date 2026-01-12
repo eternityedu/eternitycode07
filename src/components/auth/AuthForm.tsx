@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 export function AuthForm() {
   const [searchParams] = useSearchParams();
@@ -47,17 +48,15 @@ export function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-muted/30">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-muted/30">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="w-6 h-6 text-primary-foreground" />
-          </div>
+          <img src={logo} alt="Eternity Code" className="w-14 h-14 rounded-xl mx-auto mb-4" />
           <CardTitle className="text-2xl">{isSignUp ? 'Create an account' : 'Welcome back'}</CardTitle>
           <CardDescription>
             {isSignUp 
-              ? 'Start building amazing apps with AI' 
-              : 'Sign in to continue to your projects'}
+              ? 'Start vibe coding with Eternity Code' 
+              : 'Sign in to continue building'}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
