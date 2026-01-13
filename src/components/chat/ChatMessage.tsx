@@ -1,33 +1,52 @@
 import { cn } from '@/lib/utils';
-import { User, Bot, Copy, Check, Sparkles } from 'lucide-react';
-import { useState, useMemo } from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { User, Sparkles, FileCode, Eye, ExternalLink } from 'lucide-react';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import logo from '@/assets/logo.png';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
+  onViewCode?: () => void;
 }
 
 interface ParsedContent {
-  type: 'text' | 'code';
+  type: 'text' | 'code-reference';
   content: string;
   language?: string;
+  filename?: string;
 }
 
-function parseContent(content: string): ParsedContent[] {
+// Parse content but hide code blocks - show only references
+function parseContentNoCode(content: string): ParsedContent[] {
   const parts: ParsedContent[] = [];
   const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
   let lastIndex = 0;
   let match;
+  let codeBlockCount = 0;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
     if (match.index > lastIndex) {
       const text = content.slice(lastIndex, match.index).trim();
       if (text) parts.push({ type: 'text', content: text });
     }
-    parts.push({ type: 'code', content: match[2].trim(), language: match[1] || 'text' });
+    
+    codeBlockCount++;
+    const language = match[1] || 'code';
+    const codeContent = match[2].trim();
+    
+    // Try to extract filename from the code or context
+    const filenameMatch = content.slice(Math.max(0, match.index - 100), match.index)
+      .match(/`([a-zA-Z0-9_\-./]+\.[a-zA-Z]+)`|([a-zA-Z0-9_\-]+\.[a-zA-Z]+)\s*:?\s*$/);
+    const filename = filenameMatch?.[1] || filenameMatch?.[2] || `file${codeBlockCount}.${getExtension(language)}`;
+    
+    parts.push({ 
+      type: 'code-reference', 
+      content: codeContent,
+      language,
+      filename 
+    });
+    
     lastIndex = match.index + match[0].length;
   }
 
@@ -39,62 +58,98 @@ function parseContent(content: string): ParsedContent[] {
   return parts.length > 0 ? parts : [{ type: 'text', content }];
 }
 
-function CodeBlock({ code, language }: { code: string; language: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+function getExtension(language: string): string {
+  const extensions: Record<string, string> = {
+    typescript: 'tsx', tsx: 'tsx', ts: 'ts',
+    javascript: 'js', jsx: 'jsx', js: 'js',
+    python: 'py', css: 'css', html: 'html',
+    json: 'json', sql: 'sql', bash: 'sh',
   };
+  return extensions[language.toLowerCase()] || 'txt';
+}
 
+function CodeReference({ filename, language, lineCount }: { filename: string; language: string; lineCount: number }) {
   return (
-    <div className="relative group my-3 rounded-xl overflow-hidden border border-border/50">
-      <div className="flex items-center justify-between bg-secondary/80 px-4 py-2 text-xs text-muted-foreground">
-        <span className="font-medium">{language}</span>
-        <Button variant="ghost" size="sm" className="h-6 px-2 hover:text-foreground" onClick={handleCopy}>
-          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-          <span className="ml-1">{copied ? 'Copied!' : 'Copy'}</span>
-        </Button>
+    <div className="my-3 p-3 rounded-lg border border-primary/30 bg-primary/5 flex items-center gap-3 group hover:bg-primary/10 transition-colors">
+      <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+        <FileCode className="w-5 h-5 text-primary" />
       </div>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        customStyle={{ margin: 0, borderRadius: 0, fontSize: '13px', padding: '1rem', background: 'hsl(240 10% 5.5%)' }}
-      >
-        {code}
-      </SyntaxHighlighter>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm truncate">{filename}</p>
+        <p className="text-xs text-muted-foreground">
+          {language} • {lineCount} lines • Generated
+        </p>
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="text-xs text-primary flex items-center gap-1">
+          <Eye className="w-3 h-3" />
+          View in Code Panel
+        </span>
+      </div>
     </div>
   );
 }
 
-export function ChatMessage({ role, content }: ChatMessageProps) {
+export function ChatMessage({ role, content, onViewCode }: ChatMessageProps) {
   const isUser = role === 'user';
-  const parsedContent = useMemo(() => parseContent(content), [content]);
+  const parsedContent = useMemo(() => parseContentNoCode(content), [content]);
+  const hasCode = parsedContent.some(p => p.type === 'code-reference');
 
   return (
     <div className={cn('flex gap-4 p-4 rounded-xl', isUser ? 'bg-secondary/50' : 'bg-card/50 border border-border/30')}>
       <div className={cn(
-        'flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center',
-        isUser ? 'bg-primary/20 text-primary' : 'bg-primary text-primary-foreground'
+        'flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden',
+        isUser ? 'bg-primary/20 text-primary' : 'bg-gradient-to-br from-primary to-primary/60'
       )}>
-        {isUser ? <User className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+        {isUser ? (
+          <User className="w-4 h-4" />
+        ) : (
+          <img src={logo} alt="Eternity Code" className="w-full h-full object-cover" />
+        )}
       </div>
       <div className="flex-1 min-w-0 overflow-hidden">
-        <p className="text-sm font-semibold mb-2">{isUser ? 'You' : 'Eternity Code'}</p>
-        <div className="text-sm leading-relaxed text-muted-foreground">
+        <p className="text-sm font-semibold mb-2 flex items-center gap-2">
+          {isUser ? 'You' : (
+            <>
+              <span className="text-gradient">Eternity Code</span>
+              <Sparkles className="w-3 h-3 text-primary animate-pulse" />
+            </>
+          )}
+        </p>
+        <div className="text-sm leading-relaxed">
           {content ? (
             parsedContent.map((part, index) =>
-              part.type === 'code' ? (
-                <CodeBlock key={index} code={part.content} language={part.language || 'text'} />
+              part.type === 'code-reference' ? (
+                <CodeReference 
+                  key={index} 
+                  filename={part.filename || 'code'} 
+                  language={part.language || 'code'}
+                  lineCount={part.content.split('\n').length}
+                />
               ) : (
-                <p key={index} className="whitespace-pre-wrap mb-2 text-foreground">{part.content}</p>
+                <p key={index} className="whitespace-pre-wrap mb-2 text-foreground/90">{part.content}</p>
               )
             )
           ) : (
-            <span className="animate-pulse">Generating...</span>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              <span className="text-muted-foreground">Generating...</span>
+            </div>
           )}
         </div>
+        
+        {/* Quick action to view code */}
+        {hasCode && onViewCode && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="mt-2 gap-2 text-xs h-7"
+            onClick={onViewCode}
+          >
+            <ExternalLink className="w-3 h-3" />
+            View All Code in Panel
+          </Button>
+        )}
       </div>
     </div>
   );

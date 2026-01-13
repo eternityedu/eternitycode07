@@ -90,7 +90,12 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
         ) : (
           <div className="space-y-6 max-w-3xl mx-auto pb-4">
             {messages.map((message) => (
-              <ChatMessage key={message.id} role={message.role} content={message.content} />
+              <ChatMessage 
+                key={message.id} 
+                role={message.role} 
+                content={message.content} 
+                onViewCode={() => setRightPanelTab('code')}
+              />
             ))}
           </div>
         )}
