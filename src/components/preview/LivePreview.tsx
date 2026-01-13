@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CodeFile } from '@/components/code/CodePreview';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Maximize2, Minimize2, ExternalLink, Smartphone, Monitor, Tablet } from 'lucide-react';
+import { RefreshCw, Maximize2, Minimize2, ExternalLink, Smartphone, Monitor, Tablet, AlertTriangle, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LivePreviewProps {
@@ -22,8 +22,41 @@ export function LivePreview({ files }: LivePreviewProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [deviceSize, setDeviceSize] = useState<DeviceSize>('desktop');
   const [key, setKey] = useState(0);
+  const [isReady, setIsReady] = useState(false);
+  const [autoFixAttempts, setAutoFixAttempts] = useState(0);
 
-  const generatePreviewHtml = useCallback((files: CodeFile[]): string => {
+  // Auto-fix common React errors
+  const autoFixCode = useCallback((code: string, errorMsg: string): string => {
+    let fixed = code;
+    
+    // Fix: "App is not defined" - ensure component is named App
+    if (errorMsg.includes('App is not defined') || errorMsg.includes('is not defined')) {
+      // Find any component and rename to App
+      const funcMatch = fixed.match(/function\s+([A-Z][a-zA-Z0-9]*)\s*\(/);
+      const constMatch = fixed.match(/const\s+([A-Z][a-zA-Z0-9]*)\s*=\s*(?:\([^)]*\)\s*=>|\(?function)/);
+      
+      if (funcMatch && funcMatch[1] !== 'App') {
+        const name = funcMatch[1];
+        fixed = fixed.replace(new RegExp(`function\\s+${name}`, 'g'), 'function App');
+        fixed = fixed.replace(new RegExp(`<${name}(\\s|>|\\/)`, 'g'), '<App$1');
+        fixed = fixed.replace(new RegExp(`</${name}>`, 'g'), '</App>');
+      } else if (constMatch && constMatch[1] !== 'App') {
+        const name = constMatch[1];
+        fixed = fixed.replace(new RegExp(`const\\s+${name}\\s*=`, 'g'), 'const App =');
+        fixed = fixed.replace(new RegExp(`<${name}(\\s|>|\\/)`, 'g'), '<App$1');
+        fixed = fixed.replace(new RegExp(`</${name}>`, 'g'), '</App>');
+      }
+    }
+    
+    // Fix: missing hooks destructuring
+    if (!fixed.includes('const { useState') && !fixed.includes('const {useState')) {
+      // Hooks are already provided in the template
+    }
+    
+    return fixed;
+  }, []);
+
+  const generatePreviewHtml = useCallback((files: CodeFile[], attemptFix = false): string => {
     let htmlFile = files.find(f => f.name.endsWith('.html'));
     let cssFile = files.find(f => f.name.endsWith('.css'));
     let jsFile = files.find(f => 
@@ -37,7 +70,7 @@ export function LivePreview({ files }: LivePreviewProps) {
     
     if (!htmlFile) {
       const cssContent = cssFile?.content || '';
-      const jsContent = jsFile?.content || '';
+      let jsContent = jsFile?.content || '';
       
       const isReact = jsFile?.name.endsWith('.jsx') || 
                      jsFile?.name.endsWith('.tsx') || 
@@ -50,7 +83,13 @@ export function LivePreview({ files }: LivePreviewProps) {
                      jsContent.includes('const ');
       
       if (isReact && jsContent) {
-        const cleanedCode = cleanReactCode(jsContent);
+        let cleanedCode = cleanReactCode(jsContent);
+        
+        // Apply auto-fix if this is a retry
+        if (attemptFix && error) {
+          cleanedCode = autoFixCode(cleanedCode, error);
+        }
+        
         htmlContent = `<!DOCTYPE html>
 <html>
 <head>
@@ -74,7 +113,15 @@ export function LivePreview({ files }: LivePreviewProps) {
 <body>
   <div id="root"></div>
   <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } = React;
+    const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, Fragment } = React;
+    
+    // Lucide React icons polyfill
+    const LucideIcon = ({ name, className = "", size = 24 }) => {
+      return React.createElement('span', { 
+        className: className,
+        style: { display: 'inline-block', width: size, height: size }
+      }, '⬜');
+    };
     
     ${cleanedCode}
     
@@ -82,8 +129,10 @@ export function LivePreview({ files }: LivePreviewProps) {
       const container = document.getElementById('root');
       const root = ReactDOM.createRoot(container);
       root.render(React.createElement(App));
+      window.parent.postMessage({ type: 'preview-ready' }, '*');
     } catch (e) {
-      document.getElementById('root').innerHTML = '<div style="color: red; padding: 20px;"><h3>Render Error:</h3><pre>' + e.message + '</pre></div>';
+      window.parent.postMessage({ type: 'preview-error', error: e.message }, '*');
+      document.getElementById('root').innerHTML = '<div style="color: #ef4444; padding: 20px; font-family: system-ui;"><h3 style="margin-bottom: 8px;">⚠️ Render Error</h3><pre style="background: #fef2f2; padding: 12px; border-radius: 8px; font-size: 12px; overflow: auto;">' + e.message + '</pre></div>';
       console.error('Render error:', e);
     }
   </script>
@@ -110,8 +159,10 @@ export function LivePreview({ files }: LivePreviewProps) {
   <script>
     try {
       ${jsContent}
+      window.parent.postMessage({ type: 'preview-ready' }, '*');
     } catch (e) {
-      document.body.innerHTML = '<div style="color: red;"><h3>Error:</h3><pre>' + e.message + '</pre></div>';
+      window.parent.postMessage({ type: 'preview-error', error: e.message }, '*');
+      document.body.innerHTML = '<div style="color: #ef4444;"><h3>Error:</h3><pre>' + e.message + '</pre></div>';
     }
   </script>
 </body>
@@ -137,6 +188,7 @@ export function LivePreview({ files }: LivePreviewProps) {
     <h1>CSS Preview</h1>
     <p>Your CSS styles are applied to this page.</p>
   </div>
+  <script>window.parent.postMessage({ type: 'preview-ready' }, '*');</script>
 </body>
 </html>`;
       }
@@ -150,25 +202,52 @@ export function LivePreview({ files }: LivePreviewProps) {
     }
 
     return htmlContent;
-  }, []);
+  }, [error, autoFixCode]);
+
+  // Listen for messages from iframe
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'preview-ready') {
+        setIsReady(true);
+        setError(null);
+        setAutoFixAttempts(0);
+      } else if (event.data?.type === 'preview-error') {
+        const errorMsg = event.data.error;
+        setError(errorMsg);
+        
+        // Auto-fix: retry up to 3 times
+        if (autoFixAttempts < 3) {
+          setAutoFixAttempts(prev => prev + 1);
+          setTimeout(() => {
+            setKey(prev => prev + 1);
+          }, 100);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [autoFixAttempts]);
 
   useEffect(() => {
     if (files.length === 0) return;
     
+    setIsReady(false);
+    
     try {
-      const htmlContent = generatePreviewHtml(files);
+      const htmlContent = generatePreviewHtml(files, autoFixAttempts > 0);
       
       if (iframeRef.current && htmlContent) {
-        // Use srcdoc for better compatibility
         iframeRef.current.srcdoc = htmlContent;
-        setError(null);
       }
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [files, generatePreviewHtml, key]);
+  }, [files, generatePreviewHtml, key, autoFixAttempts]);
 
   const handleRefresh = () => {
+    setAutoFixAttempts(0);
+    setError(null);
     setKey(prev => prev + 1);
   };
 
@@ -185,37 +264,17 @@ export function LivePreview({ files }: LivePreviewProps) {
     return (
       <div className="h-full flex flex-col bg-background">
         <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-          <span className="text-xs font-medium text-muted-foreground">Preview</span>
+          <span className="text-xs font-medium text-muted-foreground">Live Preview</span>
         </div>
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-center p-8">
           <div>
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-              <Monitor className="w-8 h-8 text-muted-foreground/50" />
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Monitor className="w-8 h-8 text-primary/50" />
             </div>
             <h3 className="font-medium mb-2">Live Preview</h3>
             <p className="text-sm text-muted-foreground/70">
-              Click "Run" to preview your code here.
+              Your app will appear here automatically.
             </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex flex-col bg-background">
-        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-          <span className="text-xs font-medium text-muted-foreground">Preview</span>
-          <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={handleRefresh}>
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-        <div className="flex-1 flex items-center justify-center bg-destructive/5 text-destructive text-center p-8">
-          <div>
-            <div className="text-4xl mb-4">❌</div>
-            <h3 className="font-medium mb-2">Preview Error</h3>
-            <p className="text-sm">{error}</p>
           </div>
         </div>
       </div>
@@ -229,7 +288,14 @@ export function LivePreview({ files }: LivePreviewProps) {
     )}>
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/30">
-        <span className="text-xs font-medium text-muted-foreground mr-2">Preview</span>
+        <span className="text-xs font-medium text-muted-foreground mr-2 flex items-center gap-1.5">
+          {isReady ? (
+            <CheckCircle className="w-3 h-3 text-green-500" />
+          ) : error ? (
+            <AlertTriangle className="w-3 h-3 text-amber-500" />
+          ) : null}
+          Preview
+        </span>
         
         <div className="flex items-center gap-0.5 bg-muted rounded-md p-0.5">
           {(Object.keys(deviceSizes) as DeviceSize[]).map((size) => {
@@ -252,6 +318,12 @@ export function LivePreview({ files }: LivePreviewProps) {
         </div>
 
         <div className="flex-1" />
+        
+        {autoFixAttempts > 0 && autoFixAttempts < 3 && (
+          <span className="text-xs text-amber-500 mr-2">
+            Auto-fixing... ({autoFixAttempts}/3)
+          </span>
+        )}
         
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleRefresh}>
           <RefreshCw className="w-3.5 h-3.5" />
@@ -307,42 +379,25 @@ function cleanReactCode(code: string): string {
   
   if (!hasApp) {
     // Find the first component function and rename it to App
-    // Match: function ComponentName( or const ComponentName = 
     const funcMatch = cleaned.match(/^(function)\s+([A-Z][a-zA-Z0-9]*)\s*\(/m);
     const constMatch = cleaned.match(/^(const)\s+([A-Z][a-zA-Z0-9]*)\s*=\s*((\([^)]*\)|[^=])\s*=>|\(?function)/m);
     
     if (funcMatch) {
       const originalName = funcMatch[2];
-      // Replace the function declaration
       cleaned = cleaned.replace(
         new RegExp(`^function\\s+${originalName}\\s*\\(`, 'm'),
         'function App('
       );
-      // Also replace any self-references in the component
-      cleaned = cleaned.replace(
-        new RegExp(`<${originalName}(\\s|>|\\/)`, 'g'),
-        '<App$1'
-      );
-      cleaned = cleaned.replace(
-        new RegExp(`</${originalName}>`, 'g'),
-        '</App>'
-      );
+      cleaned = cleaned.replace(new RegExp(`<${originalName}(\\s|>|\\/)`, 'g'), '<App$1');
+      cleaned = cleaned.replace(new RegExp(`</${originalName}>`, 'g'), '</App>');
     } else if (constMatch) {
       const originalName = constMatch[2];
-      // Replace the const declaration
       cleaned = cleaned.replace(
         new RegExp(`^const\\s+${originalName}\\s*=`, 'm'),
         'const App ='
       );
-      // Also replace any self-references in the component
-      cleaned = cleaned.replace(
-        new RegExp(`<${originalName}(\\s|>|\\/)`, 'g'),
-        '<App$1'
-      );
-      cleaned = cleaned.replace(
-        new RegExp(`</${originalName}>`, 'g'),
-        '</App>'
-      );
+      cleaned = cleaned.replace(new RegExp(`<${originalName}(\\s|>|\\/)`, 'g'), '<App$1');
+      cleaned = cleaned.replace(new RegExp(`</${originalName}>`, 'g'), '</App>');
     }
   }
   

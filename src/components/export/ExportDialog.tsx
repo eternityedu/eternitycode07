@@ -23,16 +23,26 @@ import {
   ExternalLink,
   CheckCircle,
   Copy,
+  Github,
+  FolderTree,
+  FileCode,
 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   files: CodeFile[];
   projectName?: string;
+  chatId?: string;
 }
 
-export function ExportDialog({ open, onOpenChange, files, projectName = 'my-project' }: ExportDialogProps) {
+interface ProjectFile {
+  path: string;
+  content: string;
+}
+
+export function ExportDialog({ open, onOpenChange, files, projectName = 'my-project', chatId }: ExportDialogProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('zip');
   const [vercelToken, setVercelToken] = useState('');
@@ -40,8 +50,8 @@ export function ExportDialog({ open, onOpenChange, files, projectName = 'my-proj
   const [deploymentUrl, setDeploymentUrl] = useState('');
   const { toast } = useToast();
 
-  const generateProjectFiles = () => {
-    const projectFiles: { path: string; content: string }[] = [];
+  const generateProjectFiles = (): ProjectFile[] => {
+    const projectFiles: ProjectFile[] = [];
     
     // Find existing files
     const htmlFile = files.find(f => f.name.endsWith('.html'));
@@ -53,11 +63,13 @@ export function ExportDialog({ open, onOpenChange, files, projectName = 'my-proj
       f.name.endsWith('.js')
     );
 
+    const safeName = projectName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
     // Generate package.json
     projectFiles.push({
       path: 'package.json',
       content: JSON.stringify({
-        name: projectName.toLowerCase().replace(/\s+/g, '-'),
+        name: safeName,
         private: true,
         version: '0.1.0',
         type: 'module',
@@ -69,6 +81,7 @@ export function ExportDialog({ open, onOpenChange, files, projectName = 'my-proj
         dependencies: {
           react: '^18.3.1',
           'react-dom': '^18.3.1',
+          'lucide-react': '^0.462.0',
         },
         devDependencies: {
           '@types/react': '^18.3.3',
@@ -205,16 +218,13 @@ ${cssFile?.content || ''}`,
     if (jsFile) {
       let appContent = jsFile.content;
       
-      // Clean up imports and exports for proper React app
+      // Ensure React import
       if (!appContent.includes('import React')) {
         appContent = `import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';\n\n${appContent}`;
       }
       
-      // Ensure there's a default export
+      // Ensure default export
       if (!appContent.includes('export default')) {
-        appContent = appContent.replace(/^(function|const)\s+(\w+)/m, (match, keyword, name) => {
-          return match;
-        });
         appContent += '\n\nexport default App;';
       }
 
@@ -231,8 +241,8 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900">Welcome to ${projectName}</h1>
-        <p className="mt-4 text-gray-600">Start building your app!</p>
+        <h1 className="text-4xl font-bold text-gray-900">${projectName}</h1>
+        <p className="mt-4 text-gray-600">Generated with Eternity Code</p>
       </div>
     </div>
   );
@@ -242,7 +252,7 @@ export default App;`,
       });
     }
 
-    // Add any additional files from the code
+    // Add component files
     files.forEach(file => {
       const isMainFile = 
         file.name.endsWith('.html') || 
@@ -252,8 +262,13 @@ export default App;`,
         file.name === 'styles.css';
       
       if (!isMainFile && !projectFiles.find(pf => pf.path.endsWith(file.name))) {
+        // Determine proper path based on file type
+        let filePath = `src/${file.name}`;
+        if (file.name.includes('component') || /^[A-Z]/.test(file.name)) {
+          filePath = `src/components/${file.name}`;
+        }
         projectFiles.push({
-          path: `src/${file.name}`,
+          path: filePath,
           content: file.content,
         });
       }
@@ -264,28 +279,32 @@ export default App;`,
       path: 'README.md',
       content: `# ${projectName}
 
-This project was generated with [Eternity Code](https://eternitycode.dev).
+Generated with [Eternity Code](https://eternitycode.dev) - The AI-Powered Vibe Coding Platform
 
-## Getting Started
+## 🚀 Getting Started
 
 \`\`\`bash
 npm install
 npm run dev
 \`\`\`
 
-## Building for Production
+## 📦 Building for Production
 
 \`\`\`bash
 npm run build
 \`\`\`
 
-## Deploy to Vercel
+## 🌐 Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-repo)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
 1. Push this code to a GitHub repository
 2. Connect your repository to Vercel
 3. Deploy!
+
+---
+
+*Built with Eternity Code*
 `,
     });
 
@@ -316,7 +335,7 @@ npm-debug.log*
 Thumbs.db`,
     });
 
-    // Generate vercel.json for Vercel deployment
+    // Generate vercel.json
     projectFiles.push({
       path: 'vercel.json',
       content: JSON.stringify({
@@ -345,17 +364,19 @@ Thumbs.db`,
       const zip = new JSZip();
       const projectFiles = generateProjectFiles();
 
+      // Create proper folder structure
       projectFiles.forEach(file => {
         zip.file(file.path, file.content);
       });
 
       const blob = await zip.generateAsync({ type: 'blob' });
-      const fileName = `${projectName.toLowerCase().replace(/\s+/g, '-')}.zip`;
+      const safeName = projectName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const fileName = `${safeName}.zip`;
       saveAs(blob, fileName);
 
       toast({
         title: 'Export successful!',
-        description: `Downloaded ${fileName}`,
+        description: `Downloaded ${fileName} with ${projectFiles.length} files`,
       });
 
       onOpenChange(false);
@@ -395,7 +416,6 @@ Thumbs.db`,
     try {
       const projectFiles = generateProjectFiles();
       
-      // Create deployment payload for Vercel
       const filesPayload = projectFiles.map(file => ({
         file: file.path,
         data: btoa(unescape(encodeURIComponent(file.content))),
@@ -448,21 +468,30 @@ Thumbs.db`,
     toast({ title: 'URL copied to clipboard' });
   };
 
+  const projectFiles = files.length > 0 ? generateProjectFiles() : [];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Export Project</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <FileArchive className="w-5 h-5 text-primary" />
+            Export Project
+          </DialogTitle>
           <DialogDescription>
-            Download your project as a ZIP file or deploy directly to Vercel.
+            Download as ZIP (GitHub-ready) or deploy directly to Vercel.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="zip" className="gap-2">
               <FileArchive className="w-4 h-4" />
-              ZIP Download
+              ZIP
+            </TabsTrigger>
+            <TabsTrigger value="structure" className="gap-2">
+              <FolderTree className="w-4 h-4" />
+              Structure
             </TabsTrigger>
             <TabsTrigger value="vercel" className="gap-2">
               <Upload className="w-4 h-4" />
@@ -470,26 +499,31 @@ Thumbs.db`,
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="zip" className="mt-4 space-y-4">
+          <TabsContent value="zip" className="mt-4 space-y-4 flex-1">
             <div className="rounded-lg border p-4 bg-muted/30">
-              <h4 className="font-medium mb-2">What's included:</h4>
+              <h4 className="font-medium mb-2 flex items-center gap-2">
+                <Github className="w-4 h-4" />
+                GitHub-Ready Export
+              </h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Complete Vite + React + TypeScript setup</li>
-                <li>• Tailwind CSS configuration</li>
-                <li>• All generated components</li>
-                <li>• Ready-to-run package.json</li>
-                <li>• Vercel deployment config</li>
+                <li>✓ Complete Vite + React + TypeScript setup</li>
+                <li>✓ Tailwind CSS configuration</li>
+                <li>✓ Proper folder structure (src/, components/)</li>
+                <li>✓ Ready for `git init` and push</li>
+                <li>✓ Vercel deployment config included</li>
               </ul>
             </div>
 
-            <div className="text-sm text-muted-foreground">
-              <p><strong>Files to export:</strong> {files.length} file(s)</p>
+            <div className="text-sm text-muted-foreground flex items-center justify-between">
+              <span><strong>Files:</strong> {projectFiles.length} files</span>
+              <span><strong>Project:</strong> {projectName}</span>
             </div>
 
             <Button 
               onClick={handleExportZip} 
               disabled={isExporting || files.length === 0}
               className="w-full gap-2"
+              size="lg"
             >
               {isExporting ? (
                 <>
@@ -505,22 +539,43 @@ Thumbs.db`,
             </Button>
           </TabsContent>
 
-          <TabsContent value="vercel" className="mt-4 space-y-4">
+          <TabsContent value="structure" className="mt-4 flex-1 overflow-hidden">
+            <div className="rounded-lg border bg-secondary/30 h-full overflow-hidden">
+              <div className="px-3 py-2 border-b bg-muted/50">
+                <span className="text-xs font-medium">File Structure Preview</span>
+              </div>
+              <ScrollArea className="h-[300px]">
+                <div className="p-3 font-mono text-xs space-y-0.5">
+                  {projectFiles.map((file, index) => {
+                    const depth = file.path.split('/').length - 1;
+                    const fileName = file.path.split('/').pop();
+                    const isFolder = file.path.includes('/');
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className="flex items-center gap-2 py-0.5 hover:bg-muted/50 rounded px-1"
+                        style={{ paddingLeft: `${depth * 12}px` }}
+                      >
+                        <FileCode className="w-3 h-3 text-primary/60" />
+                        <span className="text-muted-foreground">{file.path}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="vercel" className="mt-4 space-y-4 flex-1">
             {deploymentUrl ? (
-              <div className="rounded-lg border p-4 bg-green-50 dark:bg-green-950/20">
-                <div className="flex items-center gap-2 text-green-700 dark:text-green-400 mb-2">
+              <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-green-600">
                   <CheckCircle className="w-5 h-5" />
                   <span className="font-medium">Deployment Started!</span>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Your project is being built and deployed. It may take a few minutes.
-                </p>
                 <div className="flex items-center gap-2">
-                  <Input 
-                    value={deploymentUrl} 
-                    readOnly 
-                    className="flex-1 text-sm"
-                  />
+                  <Input value={deploymentUrl} readOnly className="flex-1 font-mono text-sm" />
                   <Button variant="outline" size="icon" onClick={copyDeploymentUrl}>
                     <Copy className="w-4 h-4" />
                   </Button>
@@ -534,9 +589,8 @@ Thumbs.db`,
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="vercel-token">Vercel API Token</Label>
+                  <Label>Vercel API Token</Label>
                   <Input
-                    id="vercel-token"
                     type="password"
                     placeholder="Enter your Vercel API token"
                     value={vercelToken}
@@ -548,7 +602,7 @@ Thumbs.db`,
                       href="https://vercel.com/account/tokens" 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline"
+                      className="text-primary underline"
                     >
                       Vercel Settings → Tokens
                     </a>
@@ -557,8 +611,9 @@ Thumbs.db`,
 
                 <Button 
                   onClick={handleDeployVercel} 
-                  disabled={isDeploying || !vercelToken || files.length === 0}
+                  disabled={isDeploying || files.length === 0 || !vercelToken}
                   className="w-full gap-2"
+                  size="lg"
                 >
                   {isDeploying ? (
                     <>
@@ -574,15 +629,6 @@ Thumbs.db`,
                 </Button>
               </>
             )}
-
-            <div className="text-xs text-muted-foreground border-t pt-3">
-              <p className="font-medium mb-1">Alternative: Manual deployment</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Download the ZIP file</li>
-                <li>Push to a GitHub repository</li>
-                <li>Import in Vercel dashboard</li>
-              </ol>
-            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>
