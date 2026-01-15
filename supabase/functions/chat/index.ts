@@ -14,23 +14,7 @@ const VALID_MODELS = [
   "openai/gpt-5",
 ];
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const { messages, model = "google/gemini-3-flash-preview" } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    // Validate model
-    const selectedModel = VALID_MODELS.includes(model) ? model : "google/gemini-3-flash-preview";
-
-    const systemPrompt = `You are Eternity Code, an expert AI coding assistant. You help developers build web applications using React, TypeScript, and Tailwind CSS.
+const systemPrompt = `You are Eternity Code, an expert AI coding assistant. You help developers build web applications using React, TypeScript, and Tailwind CSS.
 
 Your capabilities:
 - Generate clean, production-ready React/TypeScript code
@@ -64,6 +48,131 @@ CODE QUALITY:
 - Handle edge cases and errors
 
 Be concise but thorough. Generate complete, working code that can be previewed immediately.`;
+
+// Handle custom API requests
+async function handleCustomApi(
+  messages: any[],
+  customConfig: any
+): Promise<Response> {
+  const { provider, apiKey, baseUrl, modelId } = customConfig;
+  
+  let endpoint = baseUrl || '';
+  let headers: Record<string, string> = {};
+  let body: any = {};
+  
+  switch (provider) {
+    case 'openai':
+      endpoint = baseUrl || 'https://api.openai.com/v1/chat/completions';
+      headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      };
+      body = {
+        model: modelId || 'gpt-4o',
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        stream: true,
+      };
+      break;
+      
+    case 'anthropic':
+      endpoint = baseUrl || 'https://api.anthropic.com/v1/messages';
+      headers = {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      };
+      body = {
+        model: modelId || 'claude-3-5-sonnet-20241022',
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: messages,
+        stream: true,
+      };
+      break;
+      
+    case 'google':
+      const model = modelId || 'gemini-2.0-flash';
+      endpoint = baseUrl || `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}`;
+      headers = {
+        'Content-Type': 'application/json',
+      };
+      body = {
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          ...messages.map((m: any) => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+          })),
+        ],
+      };
+      break;
+      
+    case 'custom':
+    default:
+      endpoint = baseUrl || '';
+      headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      };
+      body = {
+        model: modelId || 'default',
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        stream: true,
+      };
+  }
+  
+  if (!endpoint) {
+    throw new Error('Custom API endpoint not configured');
+  }
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Custom API error:", response.status, errorText);
+    throw new Error(`Custom API error: ${response.status}`);
+  }
+  
+  return response;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { messages, model = "google/gemini-3-flash-preview", customApi } = await req.json();
+    
+    // If custom API is provided, use it
+    if (customApi && customApi.enabled && customApi.apiKey) {
+      try {
+        const response = await handleCustomApi(messages, customApi);
+        return new Response(response.body, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      } catch (error) {
+        console.error("Custom API failed:", error);
+        return new Response(
+          JSON.stringify({ error: (error as Error).message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+    
+    // Use Lovable AI Gateway
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    // Validate model
+    const selectedModel = VALID_MODELS.includes(model) ? model : "google/gemini-3-flash-preview";
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
