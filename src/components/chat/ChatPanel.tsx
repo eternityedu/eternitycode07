@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
-import { ChatInput } from './ChatInput';
+import { ChatInput, FileAttachment } from './ChatInput';
 import { ModelSelector } from './ModelSelector';
 import { useChat } from '@/hooks/useChat';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -78,7 +78,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
               {suggestions.map(({ label, prompt }) => (
                 <button
                   key={label}
-                  onClick={() => sendMessage(prompt)}
+                  onClick={() => sendMessage(prompt, undefined)}
                   className="group px-5 py-2.5 text-sm rounded-xl border border-border bg-card/50 hover:bg-primary/10 hover:border-primary/50 hover:text-primary transition-all duration-200 flex items-center gap-2"
                 >
                   <Sparkles className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -102,7 +102,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
       </ScrollArea>
       <div className="border-t bg-card/50 p-3 space-y-3">
         <ChatInput
-          onSend={sendMessage}
+          onSend={(message: string, attachments?: FileAttachment[]) => sendMessage(message, attachments)}
           onStop={stopGeneration}
           isLoading={isLoading}
           placeholder="Describe what you want to build..."

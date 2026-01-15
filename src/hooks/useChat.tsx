@@ -1,12 +1,19 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
 import { DEFAULT_MODEL } from '@/lib/models';
+import { FileAttachment } from '@/components/chat/ChatInput';
 
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  attachments?: {
+    name: string;
+    type: 'image' | 'file';
+    preview?: string;
+    content?: string;
+  }[];
 }
 
 export function useChat(conversationId?: string) {
@@ -15,14 +22,91 @@ export function useChat(conversationId?: string) {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
+  const hasLoadedMessages = useRef(false);
 
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  // Load existing messages when conversation changes
+  useEffect(() => {
+    if (!conversationId) {
+      setMessages([]);
+      hasLoadedMessages.current = false;
+      return;
+    }
+
+    // Skip if we've already loaded messages for this conversation
+    if (hasLoadedMessages.current) return;
+
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Failed to load messages:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const loadedMessages: Message[] = data.map(m => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+        setMessages(loadedMessages);
+        hasLoadedMessages.current = true;
+      }
+    };
+
+    loadMessages();
+  }, [conversationId]);
+
+  // Reset loaded flag when conversation changes
+  useEffect(() => {
+    hasLoadedMessages.current = false;
+  }, [conversationId]);
+
+  const sendMessage = useCallback(async (content: string, attachments?: FileAttachment[]) => {
+    if ((!content.trim() && (!attachments || attachments.length === 0)) || isLoading) return;
+
+    // Process attachments
+    let processedAttachments: Message['attachments'] = undefined;
+    let attachmentContext = '';
+
+    if (attachments && attachments.length > 0) {
+      processedAttachments = [];
+      
+      for (const attachment of attachments) {
+        const processed: NonNullable<Message['attachments']>[number] = {
+          name: attachment.file.name,
+          type: attachment.type,
+          preview: attachment.preview,
+        };
+
+        // Read file content for text files
+        if (attachment.type === 'file') {
+          try {
+            const text = await attachment.file.text();
+            processed.content = text;
+            attachmentContext += `\n\n--- File: ${attachment.file.name} ---\n${text}\n--- End of ${attachment.file.name} ---\n`;
+          } catch (e) {
+            console.error('Failed to read file:', e);
+          }
+        } else if (attachment.type === 'image' && attachment.preview) {
+          attachmentContext += `\n\n[Attached image: ${attachment.file.name}]`;
+        }
+
+        processedAttachments.push(processed);
+      }
+    }
+
+    const fullContent = content + attachmentContext;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
+      attachments: processedAttachments,
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -33,7 +117,7 @@ export function useChat(conversationId?: string) {
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         role: 'user',
-        content,
+        content: fullContent, // Save with attachment context
       });
     }
 
@@ -50,7 +134,7 @@ export function useChat(conversationId?: string) {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
-            messages: [...messages, userMessage].map(m => ({
+            messages: [...messages, { role: 'user', content: fullContent }].map(m => ({
               role: m.role,
               content: m.content,
             })),
@@ -141,6 +225,7 @@ export function useChat(conversationId?: string) {
 
   const clearMessages = useCallback(() => {
     setMessages([]);
+    hasLoadedMessages.current = false;
   }, []);
 
   return {
