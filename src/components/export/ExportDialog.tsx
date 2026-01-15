@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import {
@@ -26,15 +26,18 @@ import {
   Github,
   FolderTree,
   FileCode,
+  RefreshCw,
+  Link,
 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   files: CodeFile[];
   projectName?: string;
-  chatId?: string;
+  projectId?: string;
 }
 
 interface ProjectFile {
@@ -42,13 +45,92 @@ interface ProjectFile {
   content: string;
 }
 
-export function ExportDialog({ open, onOpenChange, files, projectName = 'my-project', chatId }: ExportDialogProps) {
+interface VercelDeployment {
+  id: string;
+  url: string;
+  name: string;
+  state: string;
+  createdAt: number;
+}
+
+// Store Vercel connection in localStorage
+const VERCEL_STORAGE_KEY = 'eternity_vercel_config';
+
+interface VercelConfig {
+  token: string;
+  projectId?: string;
+  projectName?: string;
+  lastDeploymentUrl?: string;
+}
+
+function getVercelConfig(): VercelConfig | null {
+  const stored = localStorage.getItem(VERCEL_STORAGE_KEY);
+  return stored ? JSON.parse(stored) : null;
+}
+
+function saveVercelConfig(config: VercelConfig) {
+  localStorage.setItem(VERCEL_STORAGE_KEY, JSON.stringify(config));
+}
+
+function clearVercelConfig() {
+  localStorage.removeItem(VERCEL_STORAGE_KEY);
+}
+
+export function ExportDialog({ open, onOpenChange, files, projectName = 'my-project', projectId }: ExportDialogProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('zip');
   const [vercelToken, setVercelToken] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentUrl, setDeploymentUrl] = useState('');
+  const [vercelConfig, setVercelConfig] = useState<VercelConfig | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [deployments, setDeployments] = useState<VercelDeployment[]>([]);
+  const [isLoadingDeployments, setIsLoadingDeployments] = useState(false);
   const { toast } = useToast();
+
+  // Load saved Vercel config
+  useEffect(() => {
+    const config = getVercelConfig();
+    if (config) {
+      setVercelConfig(config);
+      setVercelToken(config.token);
+      if (config.lastDeploymentUrl) {
+        setDeploymentUrl(config.lastDeploymentUrl);
+      }
+    }
+  }, []);
+
+  // Load existing deployments when connected
+  useEffect(() => {
+    if (vercelConfig?.token && vercelConfig?.projectName) {
+      loadDeployments();
+    }
+  }, [vercelConfig]);
+
+  const loadDeployments = async () => {
+    if (!vercelConfig?.token || !vercelConfig?.projectName) return;
+    
+    setIsLoadingDeployments(true);
+    try {
+      const response = await fetch(
+        `https://api.vercel.com/v6/deployments?projectId=${vercelConfig.projectId}&limit=5`,
+        {
+          headers: {
+            Authorization: `Bearer ${vercelConfig.token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setDeployments(data.deployments || []);
+      }
+    } catch (error) {
+      console.error('Failed to load deployments:', error);
+    } finally {
+      setIsLoadingDeployments(false);
+    }
+  };
 
   const generateProjectFiles = (): ProjectFile[] => {
     const projectFiles: ProjectFile[] = [];
@@ -392,7 +474,7 @@ Thumbs.db`,
     }
   };
 
-  const handleDeployVercel = async () => {
+  const handleDeployVercel = async (isUpdate: boolean = false) => {
     if (!vercelToken) {
       toast({
         title: 'Vercel token required',
@@ -411,7 +493,11 @@ Thumbs.db`,
       return;
     }
 
-    setIsDeploying(true);
+    if (isUpdate) {
+      setIsUpdating(true);
+    } else {
+      setIsDeploying(true);
+    }
 
     try {
       const projectFiles = generateProjectFiles();
@@ -422,21 +508,30 @@ Thumbs.db`,
         encoding: 'base64',
       }));
 
+      const safeName = projectName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+      const deployPayload: any = {
+        name: safeName,
+        files: filesPayload,
+        projectSettings: {
+          buildCommand: 'npm run build',
+          outputDirectory: 'dist',
+          framework: 'vite',
+        },
+      };
+
+      // If updating existing project, include project ID
+      if (isUpdate && vercelConfig?.projectId) {
+        deployPayload.project = vercelConfig.projectId;
+      }
+
       const response = await fetch('https://api.vercel.com/v13/deployments', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${vercelToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: projectName.toLowerCase().replace(/\s+/g, '-'),
-          files: filesPayload,
-          projectSettings: {
-            buildCommand: 'npm run build',
-            outputDirectory: 'dist',
-            framework: 'vite',
-          },
-        }),
+        body: JSON.stringify(deployPayload),
       });
 
       if (!response.ok) {
@@ -445,12 +540,26 @@ Thumbs.db`,
       }
 
       const data = await response.json();
-      setDeploymentUrl(`https://${data.url}`);
+      const newUrl = `https://${data.url}`;
+      setDeploymentUrl(newUrl);
+
+      // Save Vercel config for future updates
+      const newConfig: VercelConfig = {
+        token: vercelToken,
+        projectId: data.projectId,
+        projectName: safeName,
+        lastDeploymentUrl: newUrl,
+      };
+      saveVercelConfig(newConfig);
+      setVercelConfig(newConfig);
 
       toast({
-        title: 'Deployment started!',
+        title: isUpdate ? 'Update deployed!' : 'Deployment started!',
         description: 'Your project is being deployed to Vercel.',
       });
+
+      // Reload deployments
+      setTimeout(() => loadDeployments(), 2000);
     } catch (error) {
       console.error('Deployment error:', error);
       toast({
@@ -460,12 +569,22 @@ Thumbs.db`,
       });
     } finally {
       setIsDeploying(false);
+      setIsUpdating(false);
     }
   };
 
   const copyDeploymentUrl = () => {
     navigator.clipboard.writeText(deploymentUrl);
     toast({ title: 'URL copied to clipboard' });
+  };
+
+  const handleDisconnect = () => {
+    clearVercelConfig();
+    setVercelConfig(null);
+    setVercelToken('');
+    setDeploymentUrl('');
+    setDeployments([]);
+    toast({ title: 'Disconnected from Vercel' });
   };
 
   const projectFiles = files.length > 0 ? generateProjectFiles() : [];
@@ -567,66 +686,156 @@ Thumbs.db`,
             </div>
           </TabsContent>
 
-          <TabsContent value="vercel" className="mt-4 space-y-4 flex-1">
-            {deploymentUrl ? (
+          <TabsContent value="vercel" className="mt-4 space-y-4 flex-1 overflow-auto">
+            {/* Connected state with deployment history */}
+            {vercelConfig?.projectId && (
               <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle className="w-5 h-5" />
-                  <span className="font-medium">Deployment Started!</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Input value={deploymentUrl} readOnly className="flex-1 font-mono text-sm" />
-                  <Button variant="outline" size="icon" onClick={copyDeploymentUrl}>
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" size="icon" asChild>
-                    <a href={deploymentUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-green-600">
+                    <Link className="w-4 h-4" />
+                    <span className="font-medium">Connected to Vercel</span>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={handleDisconnect} className="text-xs">
+                    Disconnect
                   </Button>
                 </div>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label>Vercel API Token</Label>
-                  <Input
-                    type="password"
-                    placeholder="Enter your Vercel API token"
-                    value={vercelToken}
-                    onChange={(e) => setVercelToken(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Get your token from{' '}
-                    <a 
-                      href="https://vercel.com/account/tokens" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary underline"
-                    >
-                      Vercel Settings → Tokens
-                    </a>
-                  </p>
+                <div className="text-sm text-muted-foreground">
+                  Project: <span className="font-mono">{vercelConfig.projectName}</span>
                 </div>
+                
+                {deploymentUrl && (
+                  <div className="flex items-center gap-2">
+                    <Input value={deploymentUrl} readOnly className="flex-1 font-mono text-sm" />
+                    <Button variant="outline" size="icon" onClick={copyDeploymentUrl}>
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" asChild>
+                      <a href={deploymentUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </Button>
+                  </div>
+                )}
 
+                {/* Update button */}
                 <Button 
-                  onClick={handleDeployVercel} 
-                  disabled={isDeploying || files.length === 0 || !vercelToken}
+                  onClick={() => handleDeployVercel(true)} 
+                  disabled={isUpdating || files.length === 0}
                   className="w-full gap-2"
-                  size="lg"
+                  variant="default"
                 >
-                  {isDeploying ? (
+                  {isUpdating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Deploying...
+                      Updating...
                     </>
                   ) : (
                     <>
-                      <Upload className="w-4 h-4" />
-                      Deploy to Vercel
+                      <RefreshCw className="w-4 h-4" />
+                      Update Deployment
                     </>
                   )}
                 </Button>
+
+                {/* Recent deployments */}
+                {deployments.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-green-500/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">Recent Deployments</span>
+                      <Button variant="ghost" size="sm" onClick={loadDeployments} disabled={isLoadingDeployments}>
+                        <RefreshCw className={`w-3 h-3 ${isLoadingDeployments ? 'animate-spin' : ''}`} />
+                      </Button>
+                    </div>
+                    <div className="space-y-1">
+                      {deployments.slice(0, 3).map((deployment) => (
+                        <div key={deployment.id} className="flex items-center justify-between text-xs p-2 rounded bg-background/50">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              deployment.state === 'READY' ? 'bg-green-500' : 
+                              deployment.state === 'ERROR' ? 'bg-red-500' : 'bg-yellow-500'
+                            }`} />
+                            <span className="font-mono truncate max-w-[150px]">{deployment.url}</span>
+                          </div>
+                          <a 
+                            href={`https://${deployment.url}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* New deployment / not connected */}
+            {!vercelConfig?.projectId && (
+              <>
+                {deploymentUrl ? (
+                  <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle className="w-5 h-5" />
+                      <span className="font-medium">Deployment Started!</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input value={deploymentUrl} readOnly className="flex-1 font-mono text-sm" />
+                      <Button variant="outline" size="icon" onClick={copyDeploymentUrl}>
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="icon" asChild>
+                        <a href={deploymentUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Vercel API Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="Enter your Vercel API token"
+                        value={vercelToken}
+                        onChange={(e) => setVercelToken(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Get your token from{' '}
+                        <a 
+                          href="https://vercel.com/account/tokens" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary underline"
+                        >
+                          Vercel Settings → Tokens
+                        </a>
+                      </p>
+                    </div>
+
+                    <Button 
+                      onClick={() => handleDeployVercel(false)} 
+                      disabled={isDeploying || files.length === 0 || !vercelToken}
+                      className="w-full gap-2"
+                      size="lg"
+                    >
+                      {isDeploying ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Deploying...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          Deploy to Vercel
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </TabsContent>
