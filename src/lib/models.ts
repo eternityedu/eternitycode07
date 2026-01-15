@@ -1,14 +1,17 @@
 // Available AI models for Eternity Code
+import { getCustomApiModel, isCustomApiEnabled } from './customApiStorage';
+
 export interface AIModel {
   id: string;
   name: string;
-  provider: 'google' | 'openai';
+  provider: 'google' | 'openai' | 'anthropic' | 'custom';
   description: string;
   speed: 'fast' | 'balanced' | 'slow';
   quality: 'standard' | 'high' | 'premium';
+  isCustom?: boolean;
 }
 
-export const AI_MODELS: AIModel[] = [
+export const BUILT_IN_MODELS: AIModel[] = [
   {
     id: 'google/gemini-3-flash-preview',
     name: 'Gemini 3 Flash',
@@ -59,8 +62,36 @@ export const AI_MODELS: AIModel[] = [
   },
 ];
 
+// Get all available models including custom API if enabled
+export function getAvailableModels(): AIModel[] {
+  const models = [...BUILT_IN_MODELS];
+  
+  const customModel = getCustomApiModel();
+  if (customModel) {
+    // Add custom model at the top
+    models.unshift({
+      id: customModel.id,
+      name: `⚡ ${customModel.name}`,
+      provider: customModel.provider as AIModel['provider'],
+      description: 'Your custom API',
+      speed: 'balanced',
+      quality: 'premium',
+      isCustom: true,
+    });
+  }
+  
+  return models;
+}
+
+export const AI_MODELS = BUILT_IN_MODELS; // For backwards compatibility
+
 export const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
 
 export function getModelById(id: string): AIModel | undefined {
-  return AI_MODELS.find(m => m.id === id);
+  return getAvailableModels().find(m => m.id === id);
+}
+
+// Check if a model ID is a custom API model
+export function isCustomModel(modelId: string): boolean {
+  return modelId.startsWith('custom:');
 }

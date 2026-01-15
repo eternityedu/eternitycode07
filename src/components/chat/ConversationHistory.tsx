@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,10 +15,11 @@ import {
   MessageSquare,
   Plus,
   Trash2,
-  MoreVertical,
+  Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import { RenameConversationDialog } from './RenameConversationDialog';
 
 interface Conversation {
   id: string;
@@ -42,6 +44,8 @@ export function ConversationHistory({
 }: ConversationHistoryProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [conversationToRename, setConversationToRename] = useState<Conversation | null>(null);
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations', projectId],
@@ -79,6 +83,11 @@ export function ConversationHistory({
       queryClient.invalidateQueries({ queryKey: ['conversations', projectId] });
     },
   });
+
+  const handleRename = (conversation: Conversation) => {
+    setConversationToRename(conversation);
+    setRenameDialogOpen(true);
+  };
 
   return (
     <div className="h-full flex flex-col bg-sidebar">
@@ -138,6 +147,10 @@ export function ConversationHistory({
                   </button>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
+                  <ContextMenuItem onClick={() => handleRename(conversation)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Rename
+                  </ContextMenuItem>
                   <ContextMenuItem
                     className="text-destructive"
                     onClick={() => deleteConversation.mutate(conversation.id)}
@@ -151,6 +164,17 @@ export function ConversationHistory({
           </div>
         )}
       </ScrollArea>
+
+      {/* Rename Dialog */}
+      {conversationToRename && (
+        <RenameConversationDialog
+          open={renameDialogOpen}
+          onOpenChange={setRenameDialogOpen}
+          conversationId={conversationToRename.id}
+          currentTitle={conversationToRename.title}
+          projectId={projectId}
+        />
+      )}
     </div>
   );
 }

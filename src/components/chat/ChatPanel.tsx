@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput, FileAttachment } from './ChatInput';
 import { ModelSelector } from './ModelSelector';
+import { DragDropZone } from './DragDropZone';
 import { useChat } from '@/hooks/useChat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CodePreview, CodeFile } from '@/components/code/CodePreview';
@@ -26,6 +27,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview'>('preview');
   const [previewFiles, setPreviewFiles] = useState<CodeFile[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]);
 
   // Extract code files from messages
   const codeFiles = useMemo(() => extractCodeBlocks(messages), [messages]);
@@ -53,6 +55,16 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
     setRightPanelTab('preview');
   }, []);
 
+  const handleFilesDropped = useCallback((files: FileAttachment[]) => {
+    setPendingAttachments(prev => [...prev, ...files]);
+  }, []);
+
+  const handleSendWithAttachments = useCallback((message: string, attachments?: FileAttachment[]) => {
+    const allAttachments = [...pendingAttachments, ...(attachments || [])];
+    sendMessage(message, allAttachments.length > 0 ? allAttachments : undefined);
+    setPendingAttachments([]);
+  }, [pendingAttachments, sendMessage]);
+
   const suggestions = [
     { label: 'Dashboard', prompt: 'Create a modern analytics dashboard with charts and stats cards using React and Tailwind' },
     { label: 'Landing page', prompt: 'Build a stunning SaaS landing page with hero section, features, pricing, and footer' },
@@ -62,7 +74,8 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
   ];
 
   const chatContent = (
-    <div className="flex flex-col h-full bg-background">
+    <DragDropZone onFilesDropped={handleFilesDropped}>
+      <div className="flex flex-col h-full bg-background">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12">
@@ -102,7 +115,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
       </ScrollArea>
       <div className="border-t bg-card/50 p-3 space-y-3">
         <ChatInput
-          onSend={(message: string, attachments?: FileAttachment[]) => sendMessage(message, attachments)}
+          onSend={handleSendWithAttachments}
           onStop={stopGeneration}
           isLoading={isLoading}
           placeholder="Describe what you want to build..."
@@ -118,7 +131,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
           </span>
         </div>
       </div>
-    </div>
+    </DragDropZone>
   );
 
   const rightPanel = (

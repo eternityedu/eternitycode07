@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Zap, Gauge, Crown } from 'lucide-react';
+import { Check, ChevronDown, Zap, Gauge, Crown, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,8 +8,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { AI_MODELS, AIModel, getModelById } from '@/lib/models';
+import { getAvailableModels, AIModel, getModelById } from '@/lib/models';
 import { cn } from '@/lib/utils';
+import { useMemo } from 'react';
 
 interface ModelSelectorProps {
   value: string;
@@ -17,7 +18,15 @@ interface ModelSelectorProps {
   disabled?: boolean;
 }
 
-function QualityBadge({ quality }: { quality: AIModel['quality'] }) {
+function QualityBadge({ quality, isCustom }: { quality: AIModel['quality']; isCustom?: boolean }) {
+  if (isCustom) {
+    return (
+      <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-500">
+        <Key className="w-2.5 h-2.5" />
+        Custom
+      </span>
+    );
+  }
   if (quality === 'premium') {
     return (
       <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">
@@ -29,17 +38,20 @@ function QualityBadge({ quality }: { quality: AIModel['quality'] }) {
   return null;
 }
 
-function SpeedIcon({ speed }: { speed: AIModel['speed'] }) {
+function SpeedIcon({ speed, isCustom }: { speed: AIModel['speed']; isCustom?: boolean }) {
+  if (isCustom) return <Key className="w-3 h-3 text-green-500" />;
   if (speed === 'fast') return <Zap className="w-3 h-3 text-success" />;
   if (speed === 'balanced') return <Gauge className="w-3 h-3 text-warning" />;
   return <Crown className="w-3 h-3 text-primary" />;
 }
 
 export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
+  const models = useMemo(() => getAvailableModels(), []);
   const selectedModel = getModelById(value);
 
-  const googleModels = AI_MODELS.filter(m => m.provider === 'google');
-  const openaiModels = AI_MODELS.filter(m => m.provider === 'openai');
+  const customModels = models.filter(m => m.isCustom);
+  const googleModels = models.filter(m => m.provider === 'google' && !m.isCustom);
+  const openaiModels = models.filter(m => m.provider === 'openai' && !m.isCustom);
 
   return (
     <DropdownMenu>
@@ -50,12 +62,37 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
           disabled={disabled}
           className="h-8 gap-2 text-xs bg-secondary/50 border-border hover:bg-secondary"
         >
-          <SpeedIcon speed={selectedModel?.speed ?? 'fast'} />
+          <SpeedIcon speed={selectedModel?.speed ?? 'fast'} isCustom={selectedModel?.isCustom} />
           <span className="max-w-[100px] truncate">{selectedModel?.name ?? 'Select Model'}</span>
           <ChevronDown className="w-3 h-3 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
+        {/* Custom API Models */}
+        {customModels.length > 0 && (
+          <>
+            <DropdownMenuLabel className="text-xs text-green-500">Your API</DropdownMenuLabel>
+            {customModels.map((model) => (
+              <DropdownMenuItem
+                key={model.id}
+                onClick={() => onChange(model.id)}
+                className="flex items-start gap-3 py-2"
+              >
+                <SpeedIcon speed={model.speed} isCustom />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{model.name}</span>
+                    <QualityBadge quality={model.quality} isCustom />
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{model.description}</p>
+                </div>
+                {value === model.id && <Check className="w-4 h-4 text-green-500" />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+          </>
+        )}
+        
         <DropdownMenuLabel className="text-xs text-muted-foreground">Google Models</DropdownMenuLabel>
         {googleModels.map((model) => (
           <DropdownMenuItem

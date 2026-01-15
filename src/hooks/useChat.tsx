@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from './use-toast';
-import { DEFAULT_MODEL } from '@/lib/models';
+import { DEFAULT_MODEL, isCustomModel } from '@/lib/models';
 import { FileAttachment } from '@/components/chat/ChatInput';
+import { getCustomApiConfig } from '@/lib/customApiStorage';
 
 export interface Message {
   id: string;
@@ -125,6 +126,29 @@ export function useChat(conversationId?: string) {
     let assistantContent = '';
 
     try {
+      // Check if using custom API
+      const customApiConfig = getCustomApiConfig();
+      const useCustomApi = isCustomModel(selectedModel) && customApiConfig?.enabled;
+      
+      const requestBody: any = {
+        messages: [...messages, { role: 'user', content: fullContent }].map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        model: useCustomApi ? undefined : selectedModel,
+      };
+      
+      // If using custom API, include the config
+      if (useCustomApi && customApiConfig) {
+        requestBody.customApi = {
+          enabled: true,
+          provider: customApiConfig.provider,
+          apiKey: customApiConfig.apiKey,
+          baseUrl: customApiConfig.baseUrl,
+          modelId: customApiConfig.modelId,
+        };
+      }
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`,
         {
@@ -133,13 +157,7 @@ export function useChat(conversationId?: string) {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({
-            messages: [...messages, { role: 'user', content: fullContent }].map(m => ({
-              role: m.role,
-              content: m.content,
-            })),
-            model: selectedModel,
-          }),
+          body: JSON.stringify(requestBody),
           signal: abortControllerRef.current.signal,
         }
       );
