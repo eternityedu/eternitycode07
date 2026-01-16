@@ -76,59 +76,60 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
   const chatContent = (
     <DragDropZone onFilesDropped={handleFilesDropped}>
       <div className="flex flex-col h-full bg-background">
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12">
-            <div className="relative mb-8">
-              <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150" />
-              <img src={logo} alt="Eternity Code" className="relative w-24 h-24 rounded-2xl shadow-2xl glow-primary" />
+        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12">
+              <div className="relative mb-8">
+                <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150" />
+                <img src={logo} alt="Eternity Code" className="relative w-24 h-24 rounded-2xl shadow-2xl glow-primary" />
+              </div>
+              <h2 className="text-3xl font-bold mb-3 text-gradient">What would you like to build?</h2>
+              <p className="text-muted-foreground max-w-md mb-10 text-lg">
+                Describe your app and watch it come to life with instant preview.
+              </p>
+              <div className="flex flex-wrap gap-3 justify-center max-w-xl">
+                {suggestions.map(({ label, prompt }) => (
+                  <button
+                    key={label}
+                    onClick={() => sendMessage(prompt, undefined)}
+                    className="group px-5 py-2.5 text-sm rounded-xl border border-border bg-card/50 hover:bg-primary/10 hover:border-primary/50 hover:text-primary transition-all duration-200 flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <h2 className="text-3xl font-bold mb-3 text-gradient">What would you like to build?</h2>
-            <p className="text-muted-foreground max-w-md mb-10 text-lg">
-              Describe your app and watch it come to life with instant preview.
-            </p>
-            <div className="flex flex-wrap gap-3 justify-center max-w-xl">
-              {suggestions.map(({ label, prompt }) => (
-                <button
-                  key={label}
-                  onClick={() => sendMessage(prompt, undefined)}
-                  className="group px-5 py-2.5 text-sm rounded-xl border border-border bg-card/50 hover:bg-primary/10 hover:border-primary/50 hover:text-primary transition-all duration-200 flex items-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
-                  {label}
-                </button>
+          ) : (
+            <div className="space-y-6 max-w-3xl mx-auto pb-4">
+              {messages.map((message) => (
+                <ChatMessage 
+                  key={message.id} 
+                  role={message.role} 
+                  content={message.content} 
+                  onViewCode={() => setRightPanelTab('code')}
+                />
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="space-y-6 max-w-3xl mx-auto pb-4">
-            {messages.map((message) => (
-              <ChatMessage 
-                key={message.id} 
-                role={message.role} 
-                content={message.content} 
-                onViewCode={() => setRightPanelTab('code')}
-              />
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-      <div className="border-t bg-card/50 p-3 space-y-3">
-        <ChatInput
-          onSend={handleSendWithAttachments}
-          onStop={stopGeneration}
-          isLoading={isLoading}
-          placeholder="Describe what you want to build..."
-        />
-        <div className="flex items-center justify-between px-1">
-          <ModelSelector
-            value={selectedModel}
-            onChange={setSelectedModel}
-            disabled={isLoading}
+          )}
+        </ScrollArea>
+        <div className="border-t bg-card/50 p-3 space-y-3">
+          <ChatInput
+            onSend={handleSendWithAttachments}
+            onStop={stopGeneration}
+            isLoading={isLoading}
+            placeholder="Describe what you want to build..."
           />
-          <span className="text-xs text-muted-foreground">
-            {isLoading ? 'Generating...' : 'Ready'}
-          </span>
+          <div className="flex items-center justify-between px-1">
+            <ModelSelector
+              value={selectedModel}
+              onChange={setSelectedModel}
+              disabled={isLoading}
+            />
+            <span className="text-xs text-muted-foreground">
+              {isLoading ? 'Generating...' : 'Ready'}
+            </span>
+          </div>
         </div>
       </div>
     </DragDropZone>
