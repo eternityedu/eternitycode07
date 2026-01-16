@@ -1,14 +1,14 @@
 import { Header } from '@/components/layout/Header';
 import { useAuth } from '@/hooks/useAuth';
 import { Navigate } from 'react-router-dom';
-import { Loader2, User, Shield, Key, Palette } from 'lucide-react';
+import { Loader2, User, Shield, Key, Palette, Database } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CustomApiSettings } from '@/components/settings/CustomApiSettings';
+import { DatabaseSettings } from '@/components/settings/DatabaseSettings';
 
 export default function Settings() {
   const { user, loading, signOut } = useAuth();
@@ -31,7 +31,7 @@ export default function Settings() {
       <main className="flex-1 container py-8">
         <div className="max-w-3xl mx-auto">
           <h1 className="text-3xl font-bold mb-2 text-gradient">Settings</h1>
-          <p className="text-muted-foreground mb-8">Manage your account and AI preferences</p>
+          <p className="text-muted-foreground mb-8">Manage your account, AI, and database preferences</p>
 
           <Tabs defaultValue="account" className="space-y-6">
             <TabsList className="bg-secondary/50">
@@ -42,6 +42,10 @@ export default function Settings() {
               <TabsTrigger value="ai" className="gap-2">
                 <Key className="w-4 h-4" />
                 AI Settings
+              </TabsTrigger>
+              <TabsTrigger value="database" className="gap-2">
+                <Database className="w-4 h-4" />
+                Database
               </TabsTrigger>
             </TabsList>
 
@@ -121,6 +125,10 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="database" className="space-y-6">
+              <DatabaseSettings />
             </TabsContent>
           </Tabs>
         </div>
