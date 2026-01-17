@@ -3,15 +3,16 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput, FileAttachment } from './ChatInput';
 import { ModelSelector } from './ModelSelector';
 import { DragDropZone } from './DragDropZone';
+import { VersionHistory } from './VersionHistory';
 import { useChat } from '@/hooks/useChat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CodePreview, CodeFile } from '@/components/code/CodePreview';
-import { LivePreview } from '@/components/preview/LivePreview';
+import { PreviewEngine } from '@/components/preview/PreviewEngine';
 import { extractCodeBlocks } from '@/lib/codeExtractor';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import { PanelRightClose, PanelRight, Code, Eye, Sparkles } from 'lucide-react';
+import { PanelRightClose, PanelRight, Code, Eye, Sparkles, History } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
 interface ChatPanelProps {
@@ -25,9 +26,10 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
   const { messages, isLoading, selectedModel, setSelectedModel, sendMessage, stopGeneration } = useChat(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview'>('preview');
+  const [rightPanelTab, setRightPanelTab] = useState<'code' | 'preview' | 'history'>('preview');
   const [previewFiles, setPreviewFiles] = useState<CodeFile[]>([]);
   const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Extract code files from messages
   const codeFiles = useMemo(() => extractCodeBlocks(messages), [messages]);
@@ -53,6 +55,15 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
   const handleRunCode = useCallback((files: CodeFile[]) => {
     setPreviewFiles(files);
     setRightPanelTab('preview');
+  }, []);
+
+  const handleRestoreVersion = useCallback((files: CodeFile[]) => {
+    setPreviewFiles(files);
+    setRightPanelTab('preview');
+  }, []);
+
+  const handlePreviewError = useCallback((error: string | null) => {
+    setPreviewError(error);
   }, []);
 
   const handleFilesDropped = useCallback((files: FileAttachment[]) => {
@@ -138,7 +149,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
   const rightPanel = (
     <div className="h-full flex flex-col bg-card">
       <div className="flex items-center justify-between border-b px-3 py-2 bg-muted/30">
-        <Tabs value={rightPanelTab} onValueChange={(v) => setRightPanelTab(v as 'code' | 'preview')}>
+        <Tabs value={rightPanelTab} onValueChange={(v) => setRightPanelTab(v as 'code' | 'preview' | 'history')}>
           <TabsList className="h-8 bg-secondary/50">
             <TabsTrigger 
               value="preview" 
@@ -146,6 +157,7 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
             >
               <Eye className="w-3.5 h-3.5" />
               Preview
+              {previewError && <span className="w-1.5 h-1.5 rounded-full bg-destructive" />}
             </TabsTrigger>
             <TabsTrigger 
               value="code" 
@@ -154,9 +166,16 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
               <Code className="w-3.5 h-3.5" />
               Code
             </TabsTrigger>
+            <TabsTrigger 
+              value="history" 
+              className="h-7 text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <History className="w-3.5 h-3.5" />
+              History
+            </TabsTrigger>
           </TabsList>
         </Tabs>
-        {codeFiles.length > 0 && (
+        {codeFiles.length > 0 && rightPanelTab !== 'history' && (
           <span className="text-xs text-muted-foreground">
             {codeFiles.length} file{codeFiles.length !== 1 ? 's' : ''}
           </span>
@@ -170,8 +189,16 @@ export function ChatPanel({ conversationId, onFilesChange, activeFile, onFileSel
             activeFile={activeFile}
             onFileSelect={onFileSelect}
           />
+        ) : rightPanelTab === 'history' ? (
+          <VersionHistory 
+            conversationId={conversationId}
+            onRestoreVersion={handleRestoreVersion}
+          />
         ) : (
-          <LivePreview files={previewFiles.length > 0 ? previewFiles : codeFiles} />
+          <PreviewEngine 
+            files={previewFiles.length > 0 ? previewFiles : codeFiles} 
+            onError={handlePreviewError}
+          />
         )}
       </div>
     </div>
