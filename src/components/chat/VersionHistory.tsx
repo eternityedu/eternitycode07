@@ -26,6 +26,7 @@ import {
 interface VersionHistoryProps {
   conversationId?: string;
   onRestoreVersion: (files: CodeFile[]) => void;
+  onCompareVersion?: (files: CodeFile[]) => void;
 }
 
 interface CodeVersion {
@@ -36,7 +37,7 @@ interface CodeVersion {
   files: CodeFile[];
 }
 
-export function VersionHistory({ conversationId, onRestoreVersion }: VersionHistoryProps) {
+export function VersionHistory({ conversationId, onRestoreVersion, onCompareVersion }: VersionHistoryProps) {
   const { toast } = useToast();
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
@@ -198,19 +199,34 @@ export function VersionHistory({ conversationId, onRestoreVersion }: VersionHist
                       ))}
                     </div>
                     
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-7 text-xs gap-1.5 ml-6"
-                      style={{ width: 'calc(100% - 1.5rem)' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRestore(version);
-                      }}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Restore This Version
-                    </Button>
+                    <div className="flex gap-2 ml-6" style={{ width: 'calc(100% - 1.5rem)' }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-7 text-xs gap-1.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRestore(version);
+                        }}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Restore
+                      </Button>
+                      {onCompareVersion && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-7 text-xs gap-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCompareVersion(version.files);
+                          }}
+                        >
+                          <Code className="w-3 h-3" />
+                          Compare
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CollapsibleContent>
               </div>
